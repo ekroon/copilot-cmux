@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "hooks": {
+    "preToolUse": [
+      {
+        "type": "command",
+        "bash": "python3 ./scripts/cmux_notify.py preToolUse",
+        "timeoutSec": 10
+      }
+    ],
+    "sessionEnd": [
+      {
+        "type": "command",
+        "bash": "python3 ./scripts/cmux_notify.py sessionEnd",
+        "timeoutSec": 10
+      }
+    ]
+  }
+}

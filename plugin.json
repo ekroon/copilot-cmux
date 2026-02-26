@@ -1,0 +1,13 @@
+{
+  "name": "cmux-notify",
+  "description": "Send Copilot CLI notifications to cmux with macOS fallback.",
+  "version": "0.1.0",
+  "license": "MIT",
+  "keywords": [
+    "copilot-cli",
+    "cmux",
+    "hooks",
+    "notifications"
+  ],
+  "hooks": "hooks.json"
+}
