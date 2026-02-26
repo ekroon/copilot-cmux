@@ -6,6 +6,7 @@ import subprocess
 import sys
 
 MAX_BODY_LENGTH = 180
+INTERACTIVE_TOOL_NAMES = {"ask_user", "exit_plan_mode"}
 
 
 def parse_hook_payload() -> dict:
@@ -22,6 +23,80 @@ def parse_hook_payload() -> dict:
 
 def normalize_body(text: str) -> str:
     return " ".join(text.split())[:MAX_BODY_LENGTH]
+
+
+def find_first_string(payload: dict, keys: tuple[str, ...]) -> str:
+    stack = [payload]
+    while stack:
+        current = stack.pop()
+        if not isinstance(current, dict):
+            continue
+
+        for key in keys:
+            value = current.get(key)
+            if isinstance(value, str):
+                value = value.strip()
+                if value:
+                    return value
+
+        for value in current.values():
+            if isinstance(value, dict):
+                stack.append(value)
+            elif isinstance(value, list):
+                for item in value:
+                    if isinstance(item, dict):
+                        stack.append(item)
+    return ""
+
+
+def extract_session_title(payload: dict) -> str:
+    return find_first_string(
+        payload,
+        ("sessionTitle", "session_title", "sessionName", "session_name"),
+    )
+
+
+def extract_working_directory(payload: dict) -> str:
+    directory = find_first_string(
+        payload,
+        (
+            "cwd",
+            "workingDirectory",
+            "working_directory",
+            "projectPath",
+            "project_path",
+            "workspacePath",
+            "workspace_path",
+            "directory",
+        ),
+    )
+    if directory:
+        return directory
+
+    env_pwd = os.environ.get("PWD")
+    if isinstance(env_pwd, str) and env_pwd.strip():
+        return env_pwd.strip()
+    try:
+        return os.getcwd()
+    except OSError:
+        return ""
+
+
+def extract_project_name(payload: dict) -> str:
+    directory = extract_working_directory(payload)
+    if not directory:
+        return ""
+    normalized = os.path.normpath(directory)
+    project_name = os.path.basename(normalized)
+    return project_name or normalized
+
+
+def build_context_subtitle(payload: dict) -> str:
+    session_title = extract_session_title(payload)
+    project_name = extract_project_name(payload)
+    if session_title and project_name:
+        return normalize_body(f"{session_title} — {project_name}")
+    return normalize_body(session_title or project_name)
 
 
 def resolve_cmux_binary():
@@ -125,21 +200,85 @@ def extract_tool_args(payload: dict) -> dict:
     return {}
 
 
+def has_interaction_markers(tool_args: dict) -> bool:
+    question = tool_args.get("question")
+    if isinstance(question, str) and question.strip():
+        return True
+
+    for key in ("choices", "actions"):
+        value = tool_args.get(key)
+        if isinstance(value, list) and value:
+            return True
+
+    for key in ("recommendedAction", "recommended_action"):
+        value = tool_args.get(key)
+        if isinstance(value, str) and value.strip():
+            return True
+
+    return False
+
+
+def extract_summary_hint(tool_args: dict) -> str:
+    summary = tool_args.get("summary")
+    if not isinstance(summary, str):
+        return ""
+
+    for line in summary.splitlines():
+        candidate = line.strip().lstrip("-* ").strip()
+        if candidate:
+            return normalize_body(candidate)
+    return ""
+
+
+def is_interactive_tool_use(tool_name: str, tool_args: dict) -> bool:
+    return tool_name in INTERACTIVE_TOOL_NAMES or has_interaction_markers(tool_args)
+
+
+def default_interaction_subtitle(tool_name: str) -> str:
+    if tool_name == "ask_user":
+        return "Needs answer"
+    if tool_name == "exit_plan_mode":
+        return "Needs approval"
+    return "Needs input"
+
+
+def build_interaction_body(tool_name: str, tool_args: dict) -> str:
+    question = tool_args.get("question")
+    if isinstance(question, str) and question.strip():
+        question = normalize_body(question)
+    else:
+        question = ""
+
+    if tool_name == "ask_user":
+        return question or "Copilot needs your input."
+
+    summary_hint = extract_summary_hint(tool_args)
+    if tool_name == "exit_plan_mode":
+        if summary_hint:
+            return normalize_body(f"Plan is ready for approval: {summary_hint}")
+        return "Plan is ready for your approval."
+
+    if question:
+        return question
+    if summary_hint:
+        return normalize_body(f"Action needed: {summary_hint}")
+    if isinstance(tool_args.get("actions"), list) and tool_args.get("actions"):
+        return "Copilot is waiting for your action."
+    return "Copilot needs your input."
+
+
 def notification_from_tool_use(payload: dict):
-    if extract_tool_name(payload) != "ask_user":
+    tool_name = extract_tool_name(payload)
+    tool_args = extract_tool_args(payload)
+    if not is_interactive_tool_use(tool_name, tool_args):
         return None
 
     if is_same_cmux_surface_active():
         return None
 
-    question = ""
-    tool_args = extract_tool_args(payload)
-    question_value = tool_args.get("question")
-    if isinstance(question_value, str):
-        question = normalize_body(question_value)
-
-    body = question or "Copilot needs your input."
-    return ("Copilot CLI", "Needs answer", body)
+    body = build_interaction_body(tool_name, tool_args)
+    subtitle = build_context_subtitle(payload) or default_interaction_subtitle(tool_name)
+    return ("Copilot CLI", subtitle, body)
 
 
 def notification_from_session_end(payload: dict):
@@ -151,7 +290,8 @@ def notification_from_session_end(payload: dict):
         body = "Task finished."
     else:
         body = f"Task stopped ({reason})."
-    return ("Copilot CLI", "Session ended", body)
+    subtitle = build_context_subtitle(payload) or "Session ended"
+    return ("Copilot CLI", subtitle, body)
 
 
 def build_notification(event_name: str, payload: dict):
