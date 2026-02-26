@@ -4,7 +4,7 @@ This plugin sends Copilot CLI hook notifications to `cmux notify` with a macOS `
 
 ## Triggers
 
-- **Needs answer**: `preToolUse` events where `toolName == "ask_user"` (fires before waiting for input).
+- **Needs input/action**: `preToolUse` events for interaction-required prompts (e.g., `ask_user`, `exit_plan_mode`, or payloads with interaction markers like `question`, `choices`, `actions`).
 - **Finished / stopped**: `sessionEnd` events (`complete`, `error`, `abort`, `timeout`, `user_exit`).
 
 ## Files
@@ -36,7 +36,8 @@ copilot plugin uninstall cmux-notify
 ## Behavior
 
 1. If `cmux` is available, the plugin runs:
-   - `cmux notify --title ... --subtitle ... --body ...`
-2. For `ask_user` and `sessionEnd`, if cmux is frontmost and the caller surface is already focused, notification is skipped.
-3. If `cmux` is unavailable or fails and `osascript` exists, it sends a macOS notification.
-4. If neither tool exists, it exits without failing the hook.
+   - `cmux notify --title "Copilot CLI" --subtitle ... --body ...`
+2. Subtitle prefers context in the form `"<session title> — <project>"`; if context is unavailable it falls back to event labels.
+3. For interaction-required `preToolUse` prompts and `sessionEnd`, if cmux is frontmost and the caller surface is already focused, notification is skipped.
+4. If `cmux` is unavailable or fails and `osascript` exists, it sends a macOS notification.
+5. If neither tool exists, it exits without failing the hook.
