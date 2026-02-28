@@ -173,11 +173,42 @@ def update_workspace_title(cmux: str, title: str) -> bool:
 
 
 def update_workspace_subtitle(cmux: str, message: str) -> bool:
-    payload = json.dumps({"message": message})
+    """Update sidebar intent status silently via set-status."""
+    cmd = [cmux, "set-status", "intent", message]
     try:
         result = subprocess.run(
-            [cmux, "claude-hook", "notification"],
-            input=payload,
+            cmd,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=3,
+        )
+        return result.returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+def set_attention_status(cmux: str, message: str) -> bool:
+    """Show attention indicator in sidebar with bell icon."""
+    cmd = [cmux, "set-status", "attention", message, "--icon", "bell.fill"]
+    try:
+        result = subprocess.run(
+            cmd,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=3,
+        )
+        return result.returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+def clear_attention_status(cmux: str) -> bool:
+    """Clear attention indicator from sidebar."""
+    try:
+        result = subprocess.run(
+            [cmux, "clear-status", "attention"],
             check=False,
             capture_output=True,
             text=True,
@@ -247,6 +278,7 @@ def handle_report_intent(payload: dict) -> None:
         update_workspace_title(cmux, title)
         state["title"] = title
 
+    clear_attention_status(cmux)
     write_state(state)
     update_workspace_subtitle(cmux, intent.strip())
 
@@ -263,6 +295,7 @@ def handle_session_end(payload: dict) -> None:
         message = f"Task stopped ({reason})"
 
     update_workspace_subtitle(cmux, message)
+    clear_attention_status(cmux)
     signal_session_stop(cmux)
     remove_state()
 
@@ -433,6 +466,10 @@ def notification_from_tool_use(payload: dict):
     tool_args = extract_tool_args(payload)
     if not is_interactive_tool_use(tool_name, tool_args):
         return None
+
+    cmux = resolve_cmux_binary()
+    if cmux:
+        set_attention_status(cmux, default_interaction_subtitle(tool_name))
 
     if is_same_cmux_surface_active():
         return None
