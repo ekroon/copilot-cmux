@@ -219,6 +219,33 @@ def clear_attention_status(cmux: str) -> bool:
         return False
 
 
+def set_running_status(cmux: str) -> bool:
+    """Show green running indicator in sidebar."""
+    cmd = [cmux, "set-status", "running", "Running", "--color", "#34c759", "--icon", "bolt.fill"]
+    try:
+        result = subprocess.run(
+            cmd, check=False, capture_output=True, text=True, timeout=3
+        )
+        return result.returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+def clear_running_status(cmux: str) -> bool:
+    """Clear running indicator from sidebar."""
+    try:
+        result = subprocess.run(
+            [cmux, "clear-status", "running"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=3,
+        )
+        return result.returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
 def signal_session_start(cmux: str) -> bool:
     try:
         result = subprocess.run(
@@ -271,6 +298,7 @@ def handle_report_intent(payload: dict) -> None:
 
     if not state.get("started"):
         signal_session_start(cmux)
+        set_running_status(cmux)
         state["started"] = True
 
     title = build_workspace_title(payload)
@@ -296,6 +324,7 @@ def handle_session_end(payload: dict) -> None:
 
     update_workspace_subtitle(cmux, message)
     clear_attention_status(cmux)
+    clear_running_status(cmux)
     signal_session_stop(cmux)
     remove_state()
 
