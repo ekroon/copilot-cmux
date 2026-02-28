@@ -4,6 +4,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 
 MAX_BODY_LENGTH = 180
 INTERACTIVE_TOOL_NAMES = {"ask_user", "exit_plan_mode"}
@@ -104,6 +105,166 @@ def resolve_cmux_binary():
     if os.path.isfile(preferred_cmux) and os.access(preferred_cmux, os.X_OK):
         return preferred_cmux
     return shutil.which("cmux")
+
+
+def _safe_filename(text: str) -> str:
+    return text.replace("/", "_").replace(":", "_").replace(" ", "_")
+
+
+def get_workspace_ref() -> str:
+    for key in ("CMUX_WORKSPACE_ID", "CMUX_WORKSPACE_REF"):
+        value = os.environ.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
+
+
+def state_file_path() -> str:
+    ref = get_workspace_ref()
+    if not ref:
+        return ""
+    safe = _safe_filename(ref)
+    return os.path.join(tempfile.gettempdir(), f"cmux-copilot-{safe}.json")
+
+
+def read_state() -> dict:
+    path = state_file_path()
+    if not path:
+        return {}
+    try:
+        with open(path) as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def write_state(state: dict) -> None:
+    path = state_file_path()
+    if not path:
+        return
+    try:
+        with open(path, "w") as f:
+            json.dump(state, f)
+    except OSError:
+        pass
+
+
+def remove_state() -> None:
+    path = state_file_path()
+    if path:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+
+
+def update_workspace_title(cmux: str, title: str) -> bool:
+    try:
+        result = subprocess.run(
+            [cmux, "rename-workspace", title],
+            check=False,
+            capture_output=True,
+            timeout=3,
+        )
+        return result.returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+def update_workspace_subtitle(cmux: str, message: str) -> bool:
+    payload = json.dumps({"message": message})
+    try:
+        result = subprocess.run(
+            [cmux, "claude-hook", "notification"],
+            input=payload,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=3,
+        )
+        return result.returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+def signal_session_start(cmux: str) -> bool:
+    try:
+        result = subprocess.run(
+            [cmux, "claude-hook", "session-start"],
+            input="{}",
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=3,
+        )
+        return result.returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+def signal_session_stop(cmux: str) -> bool:
+    try:
+        result = subprocess.run(
+            [cmux, "claude-hook", "stop"],
+            input="{}",
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=3,
+        )
+        return result.returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+def build_workspace_title(payload: dict) -> str:
+    session_title = extract_session_title(payload)
+    project_name = extract_project_name(payload)
+    if session_title and project_name:
+        return f"{project_name} — {session_title}"
+    return project_name or session_title or ""
+
+
+def handle_report_intent(payload: dict) -> None:
+    cmux = resolve_cmux_binary()
+    if not cmux:
+        return
+
+    tool_args = extract_tool_args(payload)
+    intent = tool_args.get("intent")
+    if not isinstance(intent, str) or not intent.strip():
+        return
+
+    state = read_state()
+
+    if not state.get("started"):
+        signal_session_start(cmux)
+        state["started"] = True
+
+    title = build_workspace_title(payload)
+    if title and title != state.get("title"):
+        update_workspace_title(cmux, title)
+        state["title"] = title
+
+    write_state(state)
+    update_workspace_subtitle(cmux, intent.strip())
+
+
+def handle_session_end(payload: dict) -> None:
+    cmux = resolve_cmux_binary()
+    if not cmux:
+        return
+
+    reason = str(payload.get("reason") or "unknown")
+    if reason == "complete":
+        message = "Task finished"
+    else:
+        message = f"Task stopped ({reason})"
+
+    update_workspace_subtitle(cmux, message)
+    signal_session_stop(cmux)
+    remove_state()
 
 
 def is_caller_surface_focused(cmux: str) -> bool:
@@ -328,6 +489,14 @@ def notify(title: str, subtitle: str, body: str) -> None:
 def main() -> int:
     event_name = sys.argv[1] if len(sys.argv) > 1 else ""
     payload = parse_hook_payload()
+
+    if event_name in ("preToolUse", "postToolUse"):
+        tool_name = extract_tool_name(payload)
+        if tool_name == "report_intent":
+            handle_report_intent(payload)
+    elif event_name == "sessionEnd":
+        handle_session_end(payload)
+
     notification = build_notification(event_name, payload)
     if not notification:
         return 0
