@@ -1,6 +1,13 @@
 {
   "version": 1,
   "hooks": {
+    "sessionStart": [
+      {
+        "type": "command",
+        "bash": "python3 ./scripts/cmux_notify.py sessionStart",
+        "timeoutSec": 10
+      }
+    ],
     "preToolUse": [
       {
         "type": "command",

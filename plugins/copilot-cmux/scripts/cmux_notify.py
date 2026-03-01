@@ -284,6 +284,28 @@ def build_workspace_title(payload: dict) -> str:
     return project_name or session_title or ""
 
 
+def handle_session_start(payload: dict) -> None:
+    cmux = resolve_cmux_binary()
+    if not cmux:
+        return
+
+    remove_state()
+    clear_attention_status(cmux)
+    update_workspace_subtitle(cmux, "")
+    signal_session_start(cmux)
+    set_running_status(cmux)
+
+    state = {}
+    state["started"] = True
+
+    title = build_workspace_title(payload)
+    if title:
+        update_workspace_title(cmux, title)
+        state["title"] = title
+
+    write_state(state)
+
+
 def handle_report_intent(payload: dict) -> None:
     cmux = resolve_cmux_binary()
     if not cmux:
@@ -558,8 +580,15 @@ def main() -> int:
 
     if event_name in ("preToolUse", "postToolUse"):
         tool_name = extract_tool_name(payload)
+        tool_args = extract_tool_args(payload)
         if tool_name == "report_intent":
             handle_report_intent(payload)
+        elif not is_interactive_tool_use(tool_name, tool_args):
+            cmux = resolve_cmux_binary()
+            if cmux:
+                clear_attention_status(cmux)
+    elif event_name == "sessionStart":
+        handle_session_start(payload)
     elif event_name == "sessionEnd":
         handle_session_end(payload)
 
