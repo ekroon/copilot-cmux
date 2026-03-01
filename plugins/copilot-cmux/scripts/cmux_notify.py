@@ -329,6 +329,7 @@ def handle_report_intent(payload: dict) -> None:
         state["title"] = title
 
     clear_attention_status(cmux)
+    set_running_status(cmux)
     write_state(state)
     update_workspace_subtitle(cmux, intent.strip())
 
@@ -520,6 +521,7 @@ def notification_from_tool_use(payload: dict):
 
     cmux = resolve_cmux_binary()
     if cmux:
+        clear_running_status(cmux)
         set_attention_status(cmux, default_interaction_subtitle(tool_name))
 
     if is_same_cmux_surface_active():
@@ -587,6 +589,7 @@ def main() -> int:
             cmux = resolve_cmux_binary()
             if cmux:
                 clear_attention_status(cmux)
+                set_running_status(cmux)
     elif event_name == "sessionStart":
         handle_session_start(payload)
     elif event_name == "sessionEnd":
