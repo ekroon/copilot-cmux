@@ -292,7 +292,7 @@ def handle_session_start(payload: dict) -> None:
     remove_state()
     clear_attention_status(cmux)
     update_workspace_subtitle(cmux, "")
-    signal_session_start(cmux)
+    signal_session_stop(cmux)
     set_running_status(cmux)
 
     state = {}
@@ -319,7 +319,7 @@ def handle_report_intent(payload: dict) -> None:
     state = read_state()
 
     if not state.get("started"):
-        signal_session_start(cmux)
+        signal_session_stop(cmux)
         set_running_status(cmux)
         state["started"] = True
 

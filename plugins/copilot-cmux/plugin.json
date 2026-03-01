@@ -1,7 +1,7 @@
 {
   "name": "copilot-cmux",
   "description": "Send Copilot CLI notifications to cmux with macOS fallback.",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "license": "MIT",
   "repository": "https://github.com/ekroon/copilot-cmux",
   "keywords": [
