@@ -188,6 +188,21 @@ def update_workspace_subtitle(cmux: str, message: str) -> bool:
         return False
 
 
+def clear_workspace_subtitle(cmux: str) -> bool:
+    """Clear intent status from sidebar."""
+    try:
+        result = subprocess.run(
+            [cmux, "clear-status", "intent"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=3,
+        )
+        return result.returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
 def set_attention_status(cmux: str, message: str) -> bool:
     """Show attention indicator in sidebar with bell icon."""
     cmd = [cmux, "set-status", "attention", message, "--icon", "bell.fill"]
@@ -291,7 +306,7 @@ def handle_session_start(payload: dict) -> None:
 
     remove_state()
     clear_attention_status(cmux)
-    update_workspace_subtitle(cmux, "")
+    clear_workspace_subtitle(cmux)
     signal_session_stop(cmux)
     set_running_status(cmux)
 

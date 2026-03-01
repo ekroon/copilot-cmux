@@ -13,7 +13,7 @@
       "name": "copilot-cmux",
       "source": "copilot-cmux",
       "description": "Send Copilot CLI notifications to cmux with macOS fallback.",
-      "version": "0.4.1"
+      "version": "0.4.2"
     }
   ]
 }
