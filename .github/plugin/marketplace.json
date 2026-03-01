@@ -1,0 +1,19 @@
+{
+  "name": "ekroon-plugins",
+  "metadata": {
+    "description": "Personal Copilot CLI plugins by ekroon",
+    "version": "1.0.0",
+    "pluginRoot": "./plugins"
+  },
+  "owner": {
+    "name": "ekroon"
+  },
+  "plugins": [
+    {
+      "name": "copilot-cmux",
+      "source": "copilot-cmux",
+      "description": "Send Copilot CLI notifications to cmux with macOS fallback.",
+      "version": "0.3.0"
+    }
+  ]
+}
